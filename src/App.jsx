@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 
 // ─── CONFIG — paste your Apps Script deployment URL here ──────
-const API_URL = "YOUR_APPS_SCRIPT_URL_HERE";
+const API_URL = "https://script.google.com/macros/s/AKfycbx2ddxHwMBRdhyyA3rsLCObqJV3BJSH6tRYYT_HEbmU4sB7zYzP5v5yaLK38rdif-X8IA/exec";
 
 // ─── WEEKS ────────────────────────────────────────────────────
 const WEEKS = Array.from({ length: 14 }, (_, i) => ({
