@@ -13,9 +13,9 @@ const WEEKS = Array.from({ length: 14 }, (_, i) => ({
     return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
   })(),
   opponent: [
-    "Tennis Valley","North Shore TC","Eastern Suburbs TC","Bayside TC",
-    "Hills District TC","Western Wanderers TC","Harbour View TC","Lakeside TC",
-    "Central Park TC","Northside TC","Coastal TC","Valley TC","Metro TC","Parklands TC"
+    "Tennis Valley","Strathfield","Chatswood","SydUni",
+    "Neutral Bay","Coogee","Sylvania Waters","Strathfield",
+    "SydUni","Ntural Bay","Coogee","Sylvania Waters","Tennis Valley","Chatswood"
   ][i],
   defaultVenue: i % 2 === 0 ? "Home" : "Away",
 }));
