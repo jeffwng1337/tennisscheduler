@@ -13,7 +13,7 @@ const WEEKS = Array.from({ length: 14 }, (_, i) => ({
     return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
   })(),
   opponent: [
-    "Riverside TC","North Shore TC","Eastern Suburbs TC","Bayside TC",
+    "Tennis Valley","North Shore TC","Eastern Suburbs TC","Bayside TC",
     "Hills District TC","Western Wanderers TC","Harbour View TC","Lakeside TC",
     "Central Park TC","Northside TC","Coastal TC","Valley TC","Metro TC","Parklands TC"
   ][i],
