@@ -870,20 +870,18 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
 
   function togglePlayer(isPairA, playerId) {
     const id = playerId.toString();
-    const pair     = isPairA ? r1players : r2players;
-    const other    = isPairA ? r2players : r1players;
     const setPair  = isPairA ? setR1players : setR2players;
     const setOther = isPairA ? setR2players : setR1players;
 
-    if (pair.includes(id)) {
-      // Deselect from this pair
-      setPair(pair.filter(x => x !== id));
-    } else if (pair.length < 2) {
-      // If this player is in the other pair, move them (remove there first)
-      if (other.includes(id)) setOther(other.filter(x => x !== id));
-      setPair([...pair, id]);
-    }
-    // If pair already full and player isn't in it, do nothing
+    // Always use functional updates so we read the latest state, not the closure snapshot.
+    setPair(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);   // deselect
+      if (prev.length < 2) {
+        setOther(other => other.filter(x => x !== id));            // move from other pair if needed
+        return [...prev, id];                                      // add
+      }
+      return prev;                                                 // pair full, no-op
+    });
   }
 
   function RubberInputs({ label, data, setter }) {
