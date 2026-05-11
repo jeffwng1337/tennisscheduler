@@ -8,7 +8,7 @@ const WEEKS = Array.from({ length: 14 }, (_, i) => ({
   id: i + 1,
   label: `Week ${i + 1}`,
   date: (() => {
-    const d = new Date(2026, 8, 6);
+    const d = new Date(2026, 6, 2);
     d.setDate(d.getDate() + i * 7);
     return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
   })(),
