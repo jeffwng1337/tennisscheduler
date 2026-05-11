@@ -864,15 +864,20 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
 
   function togglePlayer(isPairA, playerId) {
     const id = playerId.toString();
-    const setter = isPairA ? setR1players : setR2players;
-    const otherPair = isPairA ? r2players : r1players;
-    // Can't be in both pairs at once
-    if (otherPair.includes(id)) return;
-    setter(prev =>
-      prev.includes(id)
-        ? prev.filter(x => x !== id)
-        : prev.length < 2 ? [...prev, id] : prev
-    );
+    const pair     = isPairA ? r1players : r2players;
+    const other    = isPairA ? r2players : r1players;
+    const setPair  = isPairA ? setR1players : setR2players;
+    const setOther = isPairA ? setR2players : setR1players;
+
+    if (pair.includes(id)) {
+      // Deselect from this pair
+      setPair(pair.filter(x => x !== id));
+    } else if (pair.length < 2) {
+      // If this player is in the other pair, move them (remove there first)
+      if (other.includes(id)) setOther(other.filter(x => x !== id));
+      setPair([...pair, id]);
+    }
+    // If pair already full and player isn't in it, do nothing
   }
 
   function RubberInputs({ label, data, setter }) {
@@ -913,7 +918,7 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
             {players.map(p => (
               <button key={p.id}
-                style={{ ...css.playerPickBtn, ...(r1players.includes(p.id.toString()) ? css.playerPickActive : r2players.includes(p.id.toString()) ? { opacity: 0.4 } : {}) }}
+                style={{ ...css.playerPickBtn, ...(r1players.includes(p.id.toString()) ? css.playerPickActive : {}) }}
                 onClick={() => togglePlayer(true, p.id)}>
                 {p.name.split(" ")[0]}
               </button>
@@ -932,7 +937,7 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
             {players.map(p => (
               <button key={p.id}
-                style={{ ...css.playerPickBtn, ...(r2players.includes(p.id.toString()) ? css.playerPickActive : r1players.includes(p.id.toString()) ? { opacity: 0.4 } : {}) }}
+                style={{ ...css.playerPickBtn, ...(r2players.includes(p.id.toString()) ? css.playerPickActive : {}) }}
                 onClick={() => togglePlayer(false, p.id)}>
                 {p.name.split(" ")[0]}
               </button>
