@@ -202,9 +202,14 @@ export default function TennisApp() {
 
   // ── SCORES ────────────────────────────────────────────────────
   async function saveScore(weekId, data) {
+    // Optimistic update — apply immediately so the UI never reverts
+    setScores(s => ({ ...s, [`1-${weekId}`]: data }));
+    setEditingScore(null);
     setSaving(true);
     const res = await api("setScore", { weekId, ...data });
-    if (res.ok) { setScores(s => ({ ...s, [`1-${weekId}`]: data })); setEditingScore(null); }
+    if (!res.ok) {
+      setError(`Score saved locally but failed to sync: ${res.error || "unknown error"}. Refresh will reload sheet data.`);
+    }
     setSaving(false);
   }
 
@@ -849,8 +854,9 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
   const [rubber2, setRubber2] = useState(existing?.rubber2 || empty);
   const [rubber3, setRubber3] = useState(existing?.rubber3 || empty);
   const [rubber4, setRubber4] = useState(existing?.rubber4 || empty);
-  const [r1players, setR1players] = useState(existing?.players?.r1 || []); // Pair A
-  const [r2players, setR2players] = useState(existing?.players?.r2 || []); // Pair B
+  // Normalize all player IDs to strings to avoid number/string type mismatches
+  const [r1players, setR1players] = useState((existing?.players?.r1 || []).map(x => x.toString()));
+  const [r2players, setR2players] = useState((existing?.players?.r2 || []).map(x => x.toString()));
 
   function setNum(setter, field, val) {
     setter(prev => ({ ...prev, [field]: val === "" ? "" : Math.max(0, Math.min(7, parseInt(val) || 0)) }));
@@ -859,10 +865,14 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
   function togglePlayer(isPairA, playerId) {
     const id = playerId.toString();
     const setter = isPairA ? setR1players : setR2players;
-    setter(prev => {
-      const sp = prev.map(x => x.toString());
-      return sp.includes(id) ? prev.filter(x => x.toString() !== id) : sp.length < 2 ? [...prev, playerId] : prev;
-    });
+    const otherPair = isPairA ? r2players : r1players;
+    // Can't be in both pairs at once
+    if (otherPair.includes(id)) return;
+    setter(prev =>
+      prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : prev.length < 2 ? [...prev, id] : prev
+    );
   }
 
   function RubberInputs({ label, data, setter }) {
@@ -903,7 +913,7 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
             {players.map(p => (
               <button key={p.id}
-                style={{ ...css.playerPickBtn, ...(r1players.map(x => x.toString()).includes(p.id.toString()) ? css.playerPickActive : {}) }}
+                style={{ ...css.playerPickBtn, ...(r1players.includes(p.id.toString()) ? css.playerPickActive : r2players.includes(p.id.toString()) ? { opacity: 0.4 } : {}) }}
                 onClick={() => togglePlayer(true, p.id)}>
                 {p.name.split(" ")[0]}
               </button>
@@ -922,7 +932,7 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
             {players.map(p => (
               <button key={p.id}
-                style={{ ...css.playerPickBtn, ...(r2players.map(x => x.toString()).includes(p.id.toString()) ? css.playerPickActive : {}) }}
+                style={{ ...css.playerPickBtn, ...(r2players.includes(p.id.toString()) ? css.playerPickActive : r1players.includes(p.id.toString()) ? { opacity: 0.4 } : {}) }}
                 onClick={() => togglePlayer(false, p.id)}>
                 {p.name.split(" ")[0]}
               </button>
