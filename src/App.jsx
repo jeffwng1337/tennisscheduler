@@ -1,10 +1,15 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 
-// ─── CONFIG — paste your Apps Script deployment URL here ──────
+// ─── CONFIG ────────────────────────────────────────────────────
 const API_URL = "https://script.google.com/macros/s/AKfycbx2ddxHwMBRdhyyA3rsLCObqJV3BJSH6tRYYT_HEbmU4sB7zYzP5v5yaLK38rdif-X8IA/exec";
 
-// ─── WEEKS ────────────────────────────────────────────────────
-const WEEKS = Array.from({ length: 14 }, (_, i) => ({
+// ─── FALLBACK SCHEDULE ─────────────────────────────────────────
+// Used until getSchedule loads from the backend.
+// The Apps Script getSchedule action should return:
+// { ok: true, data: [{ id, label, date, opponent, defaultVenue }, …] }
+// where `date` is a display string (e.g. "2 Jul") and
+// `defaultVenue` is "Home" or "Away".
+const DEFAULT_WEEKS = Array.from({ length: 14 }, (_, i) => ({
   id: i + 1,
   label: `Week ${i + 1}`,
   date: (() => {
@@ -20,7 +25,7 @@ const WEEKS = Array.from({ length: 14 }, (_, i) => ({
   defaultVenue: i % 2 === 0 ? "Home" : "Away",
 }));
 
-// ─── API HELPERS ──────────────────────────────────────────────
+// ─── API HELPERS ───────────────────────────────────────────────
 async function api(action, body = null) {
   try {
     if (body) {
@@ -35,32 +40,52 @@ async function api(action, body = null) {
   }
 }
 
-// ─── HELPERS ──────────────────────────────────────────────────
+// ─── HELPERS ───────────────────────────────────────────────────
 const availColor = { available: "#22c55e", unavailable: "#ef4444", maybe: "#f59e0b", "": "#334155" };
 const availLabel = { available: "✓", unavailable: "✗", maybe: "?", "": "—" };
 const cycle = { "": "available", available: "maybe", maybe: "unavailable", unavailable: "" };
 
+// A rubber is won if we win the majority of its 2 sets.
 function rubberResult(r) {
   if (!r || r.us === "" || r.us === undefined) return null;
-  return (r.us > r.them ? 1 : 0) + (r.us2 > r.them2 ? 1 : 0) >= 2 ? "W" : "L";
-}
-function matchResult(score) {
-  if (!score) return null;
-  const r1 = rubberResult(score.rubber1), r2 = rubberResult(score.rubber2);
-  if (!r1 && !r2) return null;
-  const wins = [r1, r2].filter(x => x === "W").length;
-  return wins === 2 ? "W" : wins === 0 ? "L" : "D";
+  const setWins = (r.us > r.them ? 1 : 0) + (r.us2 > r.them2 ? 1 : 0);
+  return setWins >= 2 ? "W" : "L";
 }
 
-// ─── APP ──────────────────────────────────────────────────────
+// Match result across 4 rubbers: win if more rubbers won than lost.
+function matchResult(score) {
+  if (!score) return null;
+  const results = [score.rubber1, score.rubber2, score.rubber3, score.rubber4]
+    .map(rubberResult).filter(r => r !== null);
+  if (results.length === 0) return null;
+  const wins = results.filter(r => r === "W").length;
+  const losses = results.length - wins;
+  if (wins > losses) return "W";
+  if (losses > wins) return "L";
+  return "D";
+}
+
+// Compact score line for one rubber in the score table.
+function RubberLine({ rub, label }) {
+  if (!rub || rub.us === "") return null;
+  const won = rubberResult(rub) === "W";
+  return (
+    <div style={{ color: won ? "#22c55e" : "#ef4444", fontSize: 11, lineHeight: 1.5 }}>
+      <span style={{ color: "#64748b" }}>{label}: </span>
+      {rub.us}–{rub.them} {rub.us2}–{rub.them2}
+    </div>
+  );
+}
+
+// ─── APP ───────────────────────────────────────────────────────
 export default function TennisApp() {
   const [view, setView] = useState("schedule");
+  const [weeks, setWeeks] = useState(DEFAULT_WEEKS);   // populated from getSchedule
   const [players, setPlayers] = useState([]);
   const [availability, setAvailability] = useState({});
   const [scores, setScores] = useState({});
   const [pairings, setPairings] = useState([]);
-  // matchMeta keyed by weekId: { isHome, snacksPlayerId, notes }
-  const [matchMeta, setMatchMeta] = useState({});
+  const [matchMeta, setMatchMeta] = useState({});       // { isHome, snacksPlayerId, notes }
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -82,33 +107,35 @@ export default function TennisApp() {
   function isHome(weekId) {
     const meta = matchMeta[weekId];
     if (meta && meta.isHome !== undefined && meta.isHome !== "") return meta.isHome === true || meta.isHome === "true";
-    return WEEKS.find(w => w.id === weekId)?.defaultVenue === "Home";
+    return weeks.find(w => w.id === weekId)?.defaultVenue === "Home";
   }
 
-  // ── LOAD DATA ────────────────────────────────────────────────
+  // ── LOAD DATA ─────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     if (!apiConfigured) { setLoading(false); return; }
     setLoading(true); setError(null);
     try {
-      const [p, a, s, pr, mm] = await Promise.all([
+      const [p, a, s, pr, mm, sch] = await Promise.all([
         api("getPlayers"), api("getAvailability"), api("getScores"),
-        api("getPairings"), api("getMatchMeta"),
+        api("getPairings"), api("getMatchMeta"), api("getSchedule"),
       ]);
       if (p.ok) setPlayers(p.data);
       if (a.ok) setAvailability(a.data || {});
       if (s.ok) setScores(s.data || {});
       if (pr.ok) setPairings(pr.data.map(x => ({ ...x, player1Id: +x.player1Id, player2Id: +x.player2Id, priority: +x.priority })));
       if (mm.ok) setMatchMeta(mm.data || {});
+      // Only override the fallback if the backend returns valid schedule data
+      if (sch.ok && Array.isArray(sch.data) && sch.data.length > 0) setWeeks(sch.data);
     } catch (e) { setError("Could not connect to Google Sheets. Check your API URL."); }
     setLoading(false);
   }, [apiConfigured]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  // ── MATCH META ───────────────────────────────────────────────
+  // ── MATCH META ────────────────────────────────────────────────
   async function updateMatchMeta(weekId, patch) {
     const current = matchMeta[weekId] || {
-      isHome: WEEKS.find(w => w.id === weekId)?.defaultVenue === "Home",
+      isHome: weeks.find(w => w.id === weekId)?.defaultVenue === "Home",
       snacksPlayerId: "", notes: ""
     };
     const updated = { ...current, ...patch };
@@ -124,7 +151,7 @@ export default function TennisApp() {
     updateMatchMeta(weekId, { snacksPlayerId: next });
   }
 
-  // ── AVAILABILITY ─────────────────────────────────────────────
+  // ── AVAILABILITY ──────────────────────────────────────────────
   async function toggleAvail(playerId, weekId) {
     const key = `${playerId}-${weekId}`;
     const cur = availability[key] || "";
@@ -143,7 +170,7 @@ export default function TennisApp() {
     return players.map(p => ({ player: p, status: availability[`${p.id}-${weekId}`] || "" }));
   }
 
-  // ── SCORES ───────────────────────────────────────────────────
+  // ── SCORES ────────────────────────────────────────────────────
   async function saveScore(weekId, data) {
     setSaving(true);
     const res = await api("setScore", { weekId, ...data });
@@ -152,7 +179,7 @@ export default function TennisApp() {
   }
 
   const filteredWeeks = useMemo(() => {
-    let ws = WEEKS;
+    let ws = weeks;
     if (venueFilter !== "all") ws = ws.filter(w => (isHome(w.id) ? "Home" : "Away") === venueFilter);
     if (scoreFilter === "scored") ws = ws.filter(w => matchResult(scores[`1-${w.id}`]) !== null);
     if (scoreFilter === "unscored") ws = ws.filter(w => matchResult(scores[`1-${w.id}`]) === null);
@@ -163,9 +190,9 @@ export default function TennisApp() {
       return (order[matchResult(scores[`1-${a.id}`])] ?? 3) - (order[matchResult(scores[`1-${b.id}`])] ?? 3);
     });
     return ws;
-  }, [scoreFilter, venueFilter, sortScores, scores, matchMeta]);
+  }, [scoreFilter, venueFilter, sortScores, scores, matchMeta, weeks]);
 
-  // ── PAIRINGS ─────────────────────────────────────────────────
+  // ── PAIRINGS ──────────────────────────────────────────────────
   async function addPairing() {
     if (!newPairing.player1Id || !newPairing.player2Id || newPairing.player1Id === newPairing.player2Id) return;
     setSaving(true);
@@ -213,7 +240,7 @@ export default function TennisApp() {
     return picks;
   }
 
-  // ── PLAYERS ──────────────────────────────────────────────────
+  // ── PLAYERS ───────────────────────────────────────────────────
   async function addPlayer() {
     if (!newPlayerName.trim()) return;
     setSaving(true);
@@ -222,17 +249,21 @@ export default function TennisApp() {
     setSaving(false);
   }
 
-  // ── STATS ────────────────────────────────────────────────────
+  // ── STATS ─────────────────────────────────────────────────────
   const stats = useMemo(() => {
     let wins = 0, losses = 0, draws = 0, rubberWins = 0, rubberTotal = 0;
-    WEEKS.forEach(w => {
+    weeks.forEach(w => {
       const s = scores[`1-${w.id}`]; if (!s) return;
       const r = matchResult(s);
       if (r === "W") wins++; if (r === "L") losses++; if (r === "D") draws++;
-      [s.rubber1, s.rubber2].forEach(rub => { if (!rub) return; if (rubberResult(rub) === "W") rubberWins++; rubberTotal++; });
+      [s.rubber1, s.rubber2, s.rubber3, s.rubber4].forEach(rub => {
+        if (!rub) return;
+        if (rubberResult(rub) === "W") rubberWins++;
+        rubberTotal++;
+      });
     });
     return { wins, losses, draws, rubberWins, rubberTotal, played: wins + losses + draws };
-  }, [scores]);
+  }, [scores, weeks]);
 
   const playerName = (id) => players.find(p => p.id?.toString() === id?.toString())?.name || "?";
 
@@ -277,7 +308,7 @@ export default function TennisApp() {
     </div>
   );
 
-  // ── MAIN APP ─────────────────────────────────────────────────
+  // ── MAIN APP ──────────────────────────────────────────────────
   return (
     <div style={css.app}>
       <header style={css.header}>
@@ -328,7 +359,7 @@ export default function TennisApp() {
             </div>
 
             <div style={css.grid}>
-              {WEEKS.map(week => {
+              {weeks.map(week => {
                 const score = scores[`1-${week.id}`];
                 const result = matchResult(score);
                 const avail = countAvail(week.id);
@@ -336,6 +367,12 @@ export default function TennisApp() {
                 const meta = matchMeta[week.id] || {};
                 const home = isHome(week.id);
                 const snacksPerson = meta.snacksPlayerId ? playerName(meta.snacksPlayerId) : null;
+
+                const rubberResults = score
+                  ? [score.rubber1, score.rubber2, score.rubber3, score.rubber4]
+                      .map(rubberResult).filter(r => r !== null)
+                  : [];
+                const rubberWins = rubberResults.filter(r => r === "W").length;
 
                 return (
                   <div key={week.id}
@@ -358,7 +395,6 @@ export default function TennisApp() {
                       <span>·</span><span>{week.date}</span>
                     </div>
 
-                    {/* Snacks — home games only */}
                     {home && (
                       <div style={css.snacksRow}>
                         <span>🍊</span>
@@ -368,14 +404,17 @@ export default function TennisApp() {
                       </div>
                     )}
 
-                    {/* Notes preview */}
                     {meta.notes && (
                       <div style={css.notesPreview}>📝 {meta.notes}</div>
                     )}
 
                     <div style={css.cardFooter}>
                       <span style={{ color: avail >= 4 ? "#22c55e" : "#ef4444" }}>{avail} available</span>
-                      {score && <span style={{ color: "#7dd3fc", fontFamily: "monospace", fontSize: 11 }}>{score.rubber1?.us}-{score.rubber1?.them} · {score.rubber2?.us}-{score.rubber2?.them}</span>}
+                      {rubberResults.length > 0 && (
+                        <span style={{ color: "#7dd3fc", fontFamily: "monospace", fontSize: 11 }}>
+                          {rubberWins}/{rubberResults.length} rubbers
+                        </span>
+                      )}
                     </div>
 
                     {/* ── EXPANDED PANEL ── */}
@@ -396,7 +435,7 @@ export default function TennisApp() {
                           </div>
                         </div>
 
-                        {/* Snacks — only for home games */}
+                        {/* Snacks — home games only */}
                         {isHome(week.id) && (
                           <div style={css.expandSection}>
                             <div style={css.expandTitle}>🍊 Snacks Duty <span style={{ color: "#64748b", textTransform: "none", fontSize: 10 }}>(one person per home game)</span></div>
@@ -425,7 +464,7 @@ export default function TennisApp() {
                             ? <div style={{ color: "#64748b", fontSize: 12 }}>Not enough available players match pairings</div>
                             : suggestions.map((s, i) => (
                               <div key={i} style={css.pairingChip}>
-                                <span style={css.rubberLabel}>R{i+1}</span>
+                                <span style={css.rubberLabel}>Pair {i + 1}</span>
                                 {s.p1.name} & {s.p2.name}
                                 {s.pair.notes && <span style={{ color: "#64748b", fontSize: 11 }}> — {s.pair.notes}</span>}
                               </div>
@@ -497,7 +536,14 @@ export default function TennisApp() {
             </div>
             <div style={css.scoreTable}>
               <div style={css.scoreHeader}>
-                <span>Week</span><span>Opponent</span><span>Venue</span><span>Rubber 1</span><span>Rubber 2</span><span>Result</span><span>Notes / Snacks</span><span>Action</span>
+                <span>Week</span>
+                <span>Opponent</span>
+                <span>Venue</span>
+                <span>Pair A — R1 &amp; R2</span>
+                <span>Pair B — R3 &amp; R4</span>
+                <span>Result</span>
+                <span>Notes / Snacks</span>
+                <span>Action</span>
               </div>
               {filteredWeeks.map(week => {
                 const s = scores[`1-${week.id}`];
@@ -516,14 +562,37 @@ export default function TennisApp() {
                       </span>
                       <span>{week.opponent}</span>
                       <span style={{ color: home ? "#7dd3fc" : "#c4b5fd" }}>{home ? "Home" : "Away"}</span>
+
+                      {/* Pair A: Rubber 1 + Rubber 2 */}
                       <span>
-                        {s?.rubber1 ? `${s.rubber1.us}-${s.rubber1.them}, ${s.rubber1.us2}-${s.rubber1.them2}` : "—"}
-                        {s?.players?.r1?.length > 0 && <div style={{ fontSize: 10, color: "#64748b" }}>{s.players.r1.map(playerName).join(" & ")}</div>}
+                        {s ? (
+                          <div>
+                            <RubberLine rub={s.rubber1} label="R1" />
+                            <RubberLine rub={s.rubber2} label="R2" />
+                            {s?.players?.r1?.length > 0 && (
+                              <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>
+                                {s.players.r1.map(playerName).join(" & ")}
+                              </div>
+                            )}
+                          </div>
+                        ) : "—"}
                       </span>
+
+                      {/* Pair B: Rubber 3 + Rubber 4 */}
                       <span>
-                        {s?.rubber2 ? `${s.rubber2.us}-${s.rubber2.them}, ${s.rubber2.us2}-${s.rubber2.them2}` : "—"}
-                        {s?.players?.r2?.length > 0 && <div style={{ fontSize: 10, color: "#64748b" }}>{s.players.r2.map(playerName).join(" & ")}</div>}
+                        {s ? (
+                          <div>
+                            <RubberLine rub={s.rubber3} label="R3" />
+                            <RubberLine rub={s.rubber4} label="R4" />
+                            {s?.players?.r2?.length > 0 && (
+                              <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>
+                                {s.players.r2.map(playerName).join(" & ")}
+                              </div>
+                            )}
+                          </div>
+                        ) : "—"}
                       </span>
+
                       <span style={{ ...css.resBadge, background: res === "W" ? "#166534" : res === "L" ? "#7f1d1d" : res === "D" ? "#78350f" : "transparent", border: !res ? "1px solid #334155" : "none" }}>
                         {res || "—"}
                       </span>
@@ -565,7 +634,7 @@ export default function TennisApp() {
             <div style={{ overflowX: "auto" }}>
               <div style={css.availHeaderRow}>
                 <div style={css.playerCell}>Player</div>
-                {WEEKS.filter(w => {
+                {weeks.filter(w => {
                   if (availFilter === "available") return countAvail(w.id) >= 4;
                   if (availFilter === "short") return countAvail(w.id) < 4;
                   if (availFilter === "home") return isHome(w.id);
@@ -586,7 +655,7 @@ export default function TennisApp() {
                     {player.name}
                     {player.role === "captain" && <span style={css.captBadge}>C</span>}
                   </div>
-                  {WEEKS.filter(w => {
+                  {weeks.filter(w => {
                     if (availFilter === "available") return countAvail(w.id) >= 4;
                     if (availFilter === "short") return countAvail(w.id) < 4;
                     if (availFilter === "home") return isHome(w.id);
@@ -667,7 +736,7 @@ export default function TennisApp() {
             <div style={{ marginBottom: 32 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#fbbf24", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>🍊 Snacks Roster — Home Games</div>
               <div style={css.snacksSummary}>
-                {WEEKS.filter(w => isHome(w.id)).map(w => {
+                {weeks.filter(w => isHome(w.id)).map(w => {
                   const meta = matchMeta[w.id] || {};
                   const snacksPerson = meta.snacksPlayerId ? playerName(meta.snacksPlayerId) : null;
                   return (
@@ -684,7 +753,7 @@ export default function TennisApp() {
               </div>
             </div>
 
-            {/* Roster with snacks count */}
+            {/* Roster */}
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#7dd3fc", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.06em" }}>Squad Roster</div>
               <div style={css.rosterGrid}>
@@ -694,10 +763,10 @@ export default function TennisApp() {
                     <div style={css.rosterName}>{p.name}</div>
                     <div style={{ fontSize: 11, color: "#64748b" }}>{p.role === "captain" ? "⚡ Captain" : "Player"}</div>
                     <div style={{ color: "#22c55e", fontSize: 11, marginTop: 4 }}>
-                      {WEEKS.filter(w => availability[`${p.id}-${w.id}`] === "available").length} weeks available
+                      {weeks.filter(w => availability[`${p.id}-${w.id}`] === "available").length} weeks available
                     </div>
                     <div style={{ color: "#fbbf24", fontSize: 11, marginTop: 2 }}>
-                      🍊 {WEEKS.filter(w => isHome(w.id) && matchMeta[w.id]?.snacksPlayerId?.toString() === p.id?.toString()).length} snack duties
+                      🍊 {weeks.filter(w => isHome(w.id) && matchMeta[w.id]?.snacksPlayerId?.toString() === p.id?.toString()).length} snack duties
                     </div>
                   </div>
                 ))}
@@ -726,59 +795,106 @@ export default function TennisApp() {
   );
 }
 
-// ─── SCORE ENTRY ──────────────────────────────────────────────
+// ─── SCORE ENTRY ───────────────────────────────────────────────
+// Format: 4 rubbers total.
+//   Pair A plays Rubber 1 (vs Opp Pair 1) + Rubber 2 (vs Opp Pair 2)
+//   Pair B plays Rubber 3 (vs Opp Pair 1) + Rubber 4 (vs Opp Pair 2)
+// Each rubber is best-of-2 sets (Set 1 + Set 2).
 function ScoreEntry({ week, players, existing, onSave, onCancel }) {
   const empty = { us: "", them: "", us2: "", them2: "" };
   const [rubber1, setRubber1] = useState(existing?.rubber1 || empty);
   const [rubber2, setRubber2] = useState(existing?.rubber2 || empty);
-  const [r1players, setR1players] = useState(existing?.players?.r1 || []);
-  const [r2players, setR2players] = useState(existing?.players?.r2 || []);
+  const [rubber3, setRubber3] = useState(existing?.rubber3 || empty);
+  const [rubber4, setRubber4] = useState(existing?.rubber4 || empty);
+  const [r1players, setR1players] = useState(existing?.players?.r1 || []); // Pair A
+  const [r2players, setR2players] = useState(existing?.players?.r2 || []); // Pair B
 
   function setNum(setter, field, val) {
     setter(prev => ({ ...prev, [field]: val === "" ? "" : Math.max(0, Math.min(7, parseInt(val) || 0)) }));
   }
-  function togglePlayer(rubber, playerId) {
+
+  function togglePlayer(isPairA, playerId) {
     const id = playerId.toString();
-    const setter = rubber === 1 ? setR1players : setR2players;
+    const setter = isPairA ? setR1players : setR2players;
     setter(prev => {
       const sp = prev.map(x => x.toString());
       return sp.includes(id) ? prev.filter(x => x.toString() !== id) : sp.length < 2 ? [...prev, playerId] : prev;
     });
   }
 
+  function RubberInputs({ label, data, setter }) {
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 5, fontWeight: 600 }}>{label}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ color: "#64748b", fontSize: 11 }}>Set 1:</span>
+          <input style={css.scoreInput} type="number" min={0} max={7} value={data.us} onChange={e => setter("us", e.target.value)} placeholder="Us" />
+          <span style={{ color: "#64748b" }}>–</span>
+          <input style={css.scoreInput} type="number" min={0} max={7} value={data.them} onChange={e => setter("them", e.target.value)} placeholder="Them" />
+          <span style={{ color: "#64748b", fontSize: 11, marginLeft: 4 }}>Set 2:</span>
+          <input style={css.scoreInput} type="number" min={0} max={7} value={data.us2} onChange={e => setter("us2", e.target.value)} placeholder="Us" />
+          <span style={{ color: "#64748b" }}>–</span>
+          <input style={css.scoreInput} type="number" min={0} max={7} value={data.them2} onChange={e => setter("them2", e.target.value)} placeholder="Them" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={css.scoreEntryBox}>
-      <div style={{ fontWeight: 700, color: "#7dd3fc", marginBottom: 16, fontSize: 14 }}>Enter Score — {week.opponent} ({week.date})</div>
-      {[
-        { label: "Rubber 1", data: rubber1, setter: (f,v) => setNum(setRubber1,f,v), rPlayers: r1players, rNum: 1 },
-        { label: "Rubber 2", data: rubber2, setter: (f,v) => setNum(setRubber2,f,v), rPlayers: r2players, rNum: 2 },
-      ].map(({ label, data, setter, rPlayers, rNum }) => (
-        <div key={label} style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: "#7dd3fc", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>{label}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-            <span style={{ color: "#64748b", fontSize: 12 }}>Set 1:</span>
-            <input style={css.scoreInput} type="number" min={0} max={7} value={data.us} onChange={e => setter("us", e.target.value)} placeholder="Us" />
-            <span style={{ color: "#64748b" }}>—</span>
-            <input style={css.scoreInput} type="number" min={0} max={7} value={data.them} onChange={e => setter("them", e.target.value)} placeholder="Them" />
-            <span style={{ color: "#64748b", fontSize: 12 }}>Set 2:</span>
-            <input style={css.scoreInput} type="number" min={0} max={7} value={data.us2} onChange={e => setter("us2", e.target.value)} placeholder="Us" />
-            <span style={{ color: "#64748b" }}>—</span>
-            <input style={css.scoreInput} type="number" min={0} max={7} value={data.them2} onChange={e => setter("them2", e.target.value)} placeholder="Them" />
+      <div style={{ fontWeight: 700, color: "#7dd3fc", marginBottom: 4, fontSize: 14 }}>
+        Enter Score — {week.opponent} ({week.date})
+      </div>
+      <div style={{ fontSize: 11, color: "#64748b", marginBottom: 16 }}>
+        Each pair plays 2 rubbers (4 sets). Pair A: R1 &amp; R2 · Pair B: R3 &amp; R4.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+        {/* ── PAIR A ── */}
+        <div style={css.pairBox}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7dd3fc", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Pair A
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ color: "#64748b", fontSize: 12 }}>Players:</span>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Players (select 2):</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
             {players.map(p => (
               <button key={p.id}
-                style={{ ...css.playerPickBtn, ...(rPlayers.map(x=>x.toString()).includes(p.id.toString()) ? css.playerPickActive : {}) }}
-                onClick={() => togglePlayer(rNum, p.id)}>
+                style={{ ...css.playerPickBtn, ...(r1players.map(x => x.toString()).includes(p.id.toString()) ? css.playerPickActive : {}) }}
+                onClick={() => togglePlayer(true, p.id)}>
                 {p.name.split(" ")[0]}
               </button>
             ))}
           </div>
+          <RubberInputs label="Rubber 1 — vs Opp Pair 1" data={rubber1} setter={(f,v) => setNum(setRubber1,f,v)} />
+          <RubberInputs label="Rubber 2 — vs Opp Pair 2" data={rubber2} setter={(f,v) => setNum(setRubber2,f,v)} />
         </div>
-      ))}
-      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-        <button style={css.addBtn} onClick={() => onSave({ rubber1, rubber2, players: { r1: r1players, r2: r2players } })}>Save Score</button>
+
+        {/* ── PAIR B ── */}
+        <div style={css.pairBox}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#c4b5fd", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Pair B
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Players (select 2):</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+            {players.map(p => (
+              <button key={p.id}
+                style={{ ...css.playerPickBtn, ...(r2players.map(x => x.toString()).includes(p.id.toString()) ? css.playerPickActive : {}) }}
+                onClick={() => togglePlayer(false, p.id)}>
+                {p.name.split(" ")[0]}
+              </button>
+            ))}
+          </div>
+          <RubberInputs label="Rubber 3 — vs Opp Pair 1" data={rubber3} setter={(f,v) => setNum(setRubber3,f,v)} />
+          <RubberInputs label="Rubber 4 — vs Opp Pair 2" data={rubber4} setter={(f,v) => setNum(setRubber4,f,v)} />
+        </div>
+
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        <button style={css.addBtn} onClick={() => onSave({ rubber1, rubber2, rubber3, rubber4, players: { r1: r1players, r2: r2players } })}>
+          Save Score
+        </button>
         <button style={css.editBtn} onClick={onCancel}>Cancel</button>
       </div>
     </div>
@@ -843,11 +959,13 @@ const css = {
   toolLabel: { fontSize: 12, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" },
   sel: { background: "#0d2137", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0", padding: "8px 12px", fontSize: 13, cursor: "pointer", fontFamily: "'Georgia', serif" },
   scoreTable: { background: "#0d2137", border: "1px solid #1e3a5f", borderRadius: 14, overflow: "hidden" },
-  scoreHeader: { display: "grid", gridTemplateColumns: "80px 1fr 65px 130px 130px 55px 150px 70px", padding: "12px 16px", background: "#071525", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", gap: 8 },
-  scoreRow: { display: "grid", gridTemplateColumns: "80px 1fr 65px 130px 130px 55px 150px 70px", padding: "12px 16px", borderTop: "1px solid #1e3a5f", alignItems: "start", gap: 8, fontSize: 13 },
+  // Pair A (R1+R2) and Pair B (R3+R4) each get a wider column
+  scoreHeader: { display: "grid", gridTemplateColumns: "80px 1fr 65px 160px 160px 55px 150px 70px", padding: "12px 16px", background: "#071525", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", gap: 8 },
+  scoreRow: { display: "grid", gridTemplateColumns: "80px 1fr 65px 160px 160px 55px 150px 70px", padding: "12px 16px", borderTop: "1px solid #1e3a5f", alignItems: "start", gap: 8, fontSize: 13 },
   resBadge: { borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 700, textAlign: "center", display: "inline-block" },
   editBtn: { background: "#1e3a5f", border: "none", borderRadius: 7, color: "#7dd3fc", padding: "5px 12px", cursor: "pointer", fontSize: 12, fontFamily: "'Georgia', serif" },
   scoreEntryBox: { margin: "0 0 2px", background: "#071525", borderTop: "1px solid #1e4a6f", padding: 20, borderBottom: "2px solid #1e4a6f" },
+  pairBox: { background: "#0d2137", border: "1px solid #1e3a5f", borderRadius: 10, padding: 14 },
   scoreInput: { width: 44, background: "#0d2137", border: "1px solid #334155", borderRadius: 6, color: "#e2e8f0", padding: "6px 8px", fontSize: 14, textAlign: "center", fontFamily: "'Georgia', serif" },
   playerPickBtn: { background: "#1e3a5f", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "'Georgia', serif" },
   playerPickActive: { background: "#1e4a6f", borderColor: "#7dd3fc", color: "#7dd3fc", fontWeight: 700 },
