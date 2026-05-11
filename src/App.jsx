@@ -241,7 +241,7 @@ export default function TennisApp() {
     <div style={css.app}>
       <div style={css.setupBox}>
         <div style={{ fontSize: 36, marginBottom: 16 }}>🎾</div>
-        <div style={css.setupTitle}>Court One — Setup Required</div>
+        <div style={css.setupTitle}>Kooroora — Setup Required</div>
         <div style={css.setupText}>Paste your Google Apps Script deployment URL into <code style={css.code}>API_URL</code> at the top of this file, then reload.</div>
         <div style={css.setupSteps}>
           {["Open your Google Sheet → Extensions → Apps Script","Paste the contents of Code.gs and save","Click Deploy → New Deployment → Web App","Set 'Who has access' to Anyone","Copy the deployment URL into this file","Run initSheet() once to create tabs"].map((s, i) => (
@@ -285,7 +285,7 @@ export default function TennisApp() {
           <div style={css.brand}>
             <div style={{ fontSize: 28 }}>🎾</div>
             <div>
-              <div style={css.clubName}>COURT ONE</div>
+              <div style={css.clubName}>Kooroora</div>
               <div style={css.season}>Season 2025 · Doubles League</div>
             </div>
           </div>
