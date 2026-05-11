@@ -8,7 +8,7 @@ const WEEKS = Array.from({ length: 14 }, (_, i) => ({
   id: i + 1,
   label: `Week ${i + 1}`,
   date: (() => {
-    const d = new Date(2025, 8, 6);
+    const d = new Date(2026, 8, 6);
     d.setDate(d.getDate() + i * 7);
     return d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
   })(),
@@ -286,7 +286,7 @@ export default function TennisApp() {
             <div style={{ fontSize: 28 }}>🎾</div>
             <div>
               <div style={css.clubName}>Kooroora 5</div>
-              <div style={css.season}>Season 2025 · Doubles League</div>
+              <div style={css.season}>Season 2026 · Doubles League</div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
