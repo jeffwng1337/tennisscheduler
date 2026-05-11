@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 
 // ─── CONFIG ────────────────────────────────────────────────────
-const API_URL = "https://script.google.com/macros/s/AKfycbx2ddxHwMBRdhyyA3rsLCObqJV3BJSH6tRYYT_HEbmU4sB7zYzP5v5yaLK38rdif-X8IA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwEClomcR8FwUKCqmSK72iYR__SfykPqmaPku-RPO8zrJ5hf_V_ZvLfUvb64zxjzSgWgQ/exec";
 
 // ─── FALLBACK SCHEDULE ─────────────────────────────────────────
 // Used until getSchedule loads from the backend.
