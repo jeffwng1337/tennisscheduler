@@ -15,7 +15,7 @@ const WEEKS = Array.from({ length: 14 }, (_, i) => ({
   opponent: [
     "Tennis Valley","Strathfield","Chatswood","SydUni",
     "Neutral Bay","Coogee","Sylvania Waters","Strathfield",
-    "SydUni","Ntural Bay","Coogee","Sylvania Waters","Tennis Valley","Chatswood"
+    "SydUni","Neutural Bay","Coogee","Sylvania Waters","Tennis Valley","Chatswood"
   ][i],
   defaultVenue: i % 2 === 0 ? "Home" : "Away",
 }));
