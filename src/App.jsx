@@ -96,13 +96,19 @@ function matchResult(score) {
 }
 
 // Compact score line for one rubber in the score table.
+// Each set is coloured independently: green if won, red if lost, grey if tied.
 function RubberLine({ rub, label }) {
   if (!rub || rub.us === "") return null;
-  const won = rubberResult(rub) === "W";
+  function setColor(us, them) {
+    const u = Number(us), t = Number(them);
+    return u > t ? "#22c55e" : u < t ? "#ef4444" : "#94a3b8";
+  }
   return (
-    <div style={{ color: won ? "#22c55e" : "#ef4444", fontSize: 11, lineHeight: 1.5 }}>
+    <div style={{ fontSize: 11, lineHeight: 1.5 }}>
       <span style={{ color: "#64748b" }}>{label}: </span>
-      {rub.us}–{rub.them} {rub.us2}–{rub.them2}
+      <span style={{ color: setColor(rub.us, rub.them) }}>{rub.us}–{rub.them}</span>
+      {" "}
+      <span style={{ color: setColor(rub.us2, rub.them2) }}>{rub.us2}–{rub.them2}</span>
     </div>
   );
 }
