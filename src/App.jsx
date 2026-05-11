@@ -55,7 +55,7 @@ function rubberResult(r) {
 // Match result across 4 rubbers: win if more rubbers won than lost.
 function matchResult(score) {
   if (!score) return null;
-  const results = [score.rubber1, score.rubber2, score.rubber3, score.rubber4]
+  const results = [score.rubber1, score.rubber3, score.rubber2, score.rubber4]
     .map(rubberResult).filter(r => r !== null);
   if (results.length === 0) return null;
   const wins = results.filter(r => r === "W").length;
@@ -256,7 +256,7 @@ export default function TennisApp() {
       const s = scores[`1-${w.id}`]; if (!s) return;
       const r = matchResult(s);
       if (r === "W") wins++; if (r === "L") losses++; if (r === "D") draws++;
-      [s.rubber1, s.rubber2, s.rubber3, s.rubber4].forEach(rub => {
+      [s.rubber1, s.rubber3, s.rubber2, s.rubber4].forEach(rub => {
         if (!rub) return;
         if (rubberResult(rub) === "W") rubberWins++;
         rubberTotal++;
@@ -369,7 +369,7 @@ export default function TennisApp() {
                 const snacksPerson = meta.snacksPlayerId ? playerName(meta.snacksPlayerId) : null;
 
                 const rubberResults = score
-                  ? [score.rubber1, score.rubber2, score.rubber3, score.rubber4]
+                  ? [score.rubber1, score.rubber3, score.rubber2, score.rubber4]
                       .map(rubberResult).filter(r => r !== null)
                   : [];
                 const rubberWins = rubberResults.filter(r => r === "W").length;
@@ -563,12 +563,12 @@ export default function TennisApp() {
                       <span>{week.opponent}</span>
                       <span style={{ color: home ? "#7dd3fc" : "#c4b5fd" }}>{home ? "Home" : "Away"}</span>
 
-                      {/* Pair A: Rubber 1 + Rubber 2 */}
+                      {/* Pair A: Rubber 1 + Rubber 3 */}
                       <span>
                         {s ? (
                           <div>
                             <RubberLine rub={s.rubber1} label="R1" />
-                            <RubberLine rub={s.rubber2} label="R2" />
+                            <RubberLine rub={s.rubber3} label="R2" />
                             {s?.players?.r1?.length > 0 && (
                               <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>
                                 {s.players.r1.map(playerName).join(" & ")}
@@ -578,11 +578,11 @@ export default function TennisApp() {
                         ) : "—"}
                       </span>
 
-                      {/* Pair B: Rubber 3 + Rubber 4 */}
+                      {/* Pair B: Rubber 2 + Rubber 4 */}
                       <span>
                         {s ? (
                           <div>
-                            <RubberLine rub={s.rubber3} label="R3" />
+                            <RubberLine rub={s.rubber2} label="R3" />
                             <RubberLine rub={s.rubber4} label="R4" />
                             {s?.players?.r2?.length > 0 && (
                               <div style={{ fontSize: 10, color: "#64748b", marginTop: 3 }}>
@@ -797,14 +797,14 @@ export default function TennisApp() {
 
 // ─── SCORE ENTRY ───────────────────────────────────────────────
 // Format: 4 rubbers total.
-//   Pair A plays Rubber 1 (vs Opp Pair 1) + Rubber 2 (vs Opp Pair 2)
-//   Pair B plays Rubber 3 (vs Opp Pair 1) + Rubber 4 (vs Opp Pair 2)
+//   Pair A plays Rubber 1 (vs Opp Pair 1) + Rubber 3 (vs Opp Pair 2)
+//   Pair B plays Rubber 2 (vs Opp Pair 1) + Rubber 4 (vs Opp Pair 2)
 // Each rubber is best-of-2 sets (Set 1 + Set 2).
 function ScoreEntry({ week, players, existing, onSave, onCancel }) {
   const empty = { us: "", them: "", us2: "", them2: "" };
   const [rubber1, setRubber1] = useState(existing?.rubber1 || empty);
-  const [rubber2, setRubber2] = useState(existing?.rubber2 || empty);
   const [rubber3, setRubber3] = useState(existing?.rubber3 || empty);
+  const [rubber2, setRubber2] = useState(existing?.rubber2 || empty);
   const [rubber4, setRubber4] = useState(existing?.rubber4 || empty);
   const [r1players, setR1players] = useState(existing?.players?.r1 || []); // Pair A
   const [r2players, setR2players] = useState(existing?.players?.r2 || []); // Pair B
@@ -867,7 +867,7 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
             ))}
           </div>
           <RubberInputs label="Rubber 1 — vs Opp Pair 1" data={rubber1} setter={(f,v) => setNum(setRubber1,f,v)} />
-          <RubberInputs label="Rubber 2 — vs Opp Pair 2" data={rubber2} setter={(f,v) => setNum(setRubber2,f,v)} />
+          <RubberInputs label="Rubber 3 — vs Opp Pair 2" data={rubber3} setter={(f,v) => setNum(setRubber3,f,v)} />
         </div>
 
         {/* ── PAIR B ── */}
@@ -885,14 +885,14 @@ function ScoreEntry({ week, players, existing, onSave, onCancel }) {
               </button>
             ))}
           </div>
-          <RubberInputs label="Rubber 3 — vs Opp Pair 1" data={rubber3} setter={(f,v) => setNum(setRubber3,f,v)} />
+          <RubberInputs label="Rubber 2 — vs Opp Pair 1" data={rubber2} setter={(f,v) => setNum(setRubber2,f,v)} />
           <RubberInputs label="Rubber 4 — vs Opp Pair 2" data={rubber4} setter={(f,v) => setNum(setRubber4,f,v)} />
         </div>
 
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-        <button style={css.addBtn} onClick={() => onSave({ rubber1, rubber2, rubber3, rubber4, players: { r1: r1players, r2: r2players } })}>
+        <button style={css.addBtn} onClick={() => onSave({ rubber1, rubber3, rubber2, rubber4, players: { r1: r1players, r2: r2players } })}>
           Save Score
         </button>
         <button style={css.editBtn} onClick={onCancel}>Cancel</button>
